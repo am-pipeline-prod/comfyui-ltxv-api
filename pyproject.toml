@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-ltxv-api"
+version = "0.1.0"
+description = "ComfyUI custom nodes wrapping the Lightricks LTX REST API (text-to-video, image-to-video, retake/video-to-video, and HDR EXR video-to-video)."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Adrian Meyer", email = "accounts@adrianmeyer.art" },
+]
+keywords = [
+    "comfyui", "comfyui-nodes", "ltx", "ltxv", "lightricks",
+    "text-to-video", "image-to-video", "video-to-video", "hdr", "exr", "vfx",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "requests>=2.28",
+    "imageio[ffmpeg]>=2.25",
+    "Pillow>=9.0",
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+]
+
+[project.urls]
+Repository = "https://github.com/am-pipeline-prod/comfyui-ltxv-api"
+Issues = "https://github.com/am-pipeline-prod/comfyui-ltxv-api/issues"
+"LTX API Docs" = "https://docs.ltx.video"
+
+# ---------------------------------------------------------------------------
+# Comfy Registry metadata.
+#
+# Fill in `PublisherId` with the value from your registry.comfy.org profile
+# (the part after the @) before the first `comfy node publish`. The package
+# `name` above is immutable once published, so it is set deliberately.
+# ---------------------------------------------------------------------------
+[tool.comfy]
+PublisherId = ""  # TODO: set to your registry.comfy.org publisher id before first publish
+DisplayName = "ComfyUI LTXV API"
+Icon = ""  # optional: SVG/PNG/JPG/GIF, max 800x400, hosted URL
+
+[tool.setuptools.packages.find]
+include = ["ltxv_api*"]
+exclude = ["tests*", "example_workflows*", "docs*"]

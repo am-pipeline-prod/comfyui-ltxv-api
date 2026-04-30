@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Local config / secrets — must never be committed
+.env
+.env.*
+!.env.example
+config.local.toml
+*.api-key
+
+# Claude Code per-user state (allowlist, etc. — not source-of-truth)
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local smoke-test scratch
+scratch/
+*.tmp.mp4
+*.tmp.png
+*.tmp.exr
+*.tmp.zip

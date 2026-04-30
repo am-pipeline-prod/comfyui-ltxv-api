@@ -1,0 +1,101 @@
+{
+  "last_node_id": 5,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadVideo",
+      "pos": [80, 200],
+      "size": [340, 200],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "VIDEO", "type": "VIDEO", "links": [1], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "LoadVideo"},
+      "widgets_values": ["example.mp4"]
+    },
+    {
+      "id": 2,
+      "type": "LTXVAPIVideoToVideoHDR",
+      "pos": [480, 200],
+      "size": [400, 320],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "video", "type": "VIDEO", "link": 1},
+        {"name": "image", "type": "IMAGE", "link": null}
+      ],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [2], "slot_index": 0},
+        {"name": "video", "type": "VIDEO", "links": [3], "slot_index": 1},
+        {"name": "audio", "type": "AUDIO", "links": null},
+        {"name": "info", "type": "STRING", "links": [4], "slot_index": 3},
+        {"name": "width", "type": "INT", "links": null},
+        {"name": "height", "type": "INT", "links": null},
+        {"name": "frame_rate", "type": "FLOAT", "links": null},
+        {"name": "frame_count", "type": "INT", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LTXVAPIVideoToVideoHDR"},
+      "widgets_values": [
+        24.0,
+        24.0,
+        600,
+        false,
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "PreviewImage",
+      "pos": [940, 200],
+      "size": [320, 320],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 2}],
+      "properties": {"Node name for S&R": "PreviewImage"}
+    },
+    {
+      "id": 4,
+      "type": "SaveVideo",
+      "pos": [940, 560],
+      "size": [320, 120],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [{"name": "video", "type": "VIDEO", "link": 3}],
+      "properties": {"Node name for S&R": "SaveVideo"},
+      "widgets_values": ["ltxv_hdr_preview"]
+    },
+    {
+      "id": 5,
+      "type": "ShowText|pysssss",
+      "pos": [940, 720],
+      "size": [320, 80],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [{"name": "text", "type": "STRING", "link": 4, "widget": {"name": "text"}}],
+      "properties": {"Node name for S&R": "ShowText|pysssss"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "VIDEO"],
+    [2, 2, 0, 3, 0, "IMAGE"],
+    [3, 2, 1, 4, 0, "VIDEO"],
+    [4, 2, 3, 5, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "comfyui-ltxv-api": {
+      "description": "HDR EXR pipeline: LoadVideo -> async LTX HDR job -> float32 IMAGE batch (HDR-safe). The SaveVideo wired to the synthesised VIDEO socket gives an SDR preview encode; for true HDR export wire `image` into AM Write Image with ext=exr, and remember the AWG3 colour-space caveat in the README."
+    }
+  },
+  "version": 0.4
+}

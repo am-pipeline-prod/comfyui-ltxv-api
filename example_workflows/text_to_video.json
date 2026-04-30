@@ -1,0 +1,85 @@
+{
+  "last_node_id": 4,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LTXVAPITextToVideo",
+      "pos": [200, 200],
+      "size": [380, 360],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [1], "slot_index": 0},
+        {"name": "video", "type": "VIDEO", "links": [2], "slot_index": 1},
+        {"name": "audio", "type": "AUDIO", "links": null},
+        {"name": "info", "type": "STRING", "links": [3], "slot_index": 3},
+        {"name": "width", "type": "INT", "links": null},
+        {"name": "height", "type": "INT", "links": null},
+        {"name": "frame_rate", "type": "FLOAT", "links": null},
+        {"name": "frame_count", "type": "INT", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LTXVAPITextToVideo"},
+      "widgets_values": [
+        "A serene mountain valley at golden hour, slow camera dolly-in revealing a misty pine forest below.",
+        "ltx-2-fast",
+        4,
+        "1280x720",
+        "",
+        24,
+        true,
+        "dolly_in"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "PreviewImage",
+      "pos": [640, 200],
+      "size": [320, 320],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 1}],
+      "properties": {"Node name for S&R": "PreviewImage"}
+    },
+    {
+      "id": 3,
+      "type": "SaveVideo",
+      "pos": [640, 560],
+      "size": [320, 120],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"name": "video", "type": "VIDEO", "link": 2}],
+      "properties": {"Node name for S&R": "SaveVideo"},
+      "widgets_values": ["ltxv_t2v"]
+    },
+    {
+      "id": 4,
+      "type": "ShowText|pysssss",
+      "pos": [640, 720],
+      "size": [320, 80],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [{"name": "text", "type": "STRING", "link": 3, "widget": {"name": "text"}}],
+      "properties": {"Node name for S&R": "ShowText|pysssss"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 1, 1, 3, 0, "VIDEO"],
+    [3, 1, 3, 4, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "comfyui-ltxv-api": {
+      "description": "Minimal text-to-video example: prompt -> LTX -> preview first frame + save MP4 + show info string."
+    }
+  },
+  "version": 0.4
+}
