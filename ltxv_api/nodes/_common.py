@@ -6,17 +6,15 @@ from typing import Any, Dict
 import torch
 
 # Resolution dropdown values shared across the sync endpoints. The LTX API
-# accepts many sizes; these are the broadly-supported "documented defaults"
-# we surface in the dropdown to keep the canvas tidy. An artist who wants a
-# different size can pick `(custom)` and type the literal "WxH" string into
-# the `resolution_custom` widget.
+# rejects sizes that aren't on a per-model accepted list, with errors like
+# "Resolution 1280x720 is not supported by model ltx-2-fast". Only the two
+# documented values (`1920x1080`, `1080x1920`) are confirmed accepted across
+# every current model variant, so the dropdown is intentionally limited to
+# those plus a `(custom)` escape hatch -- artists who know their model's
+# accepted set can type any literal "WxH" into `resolution_custom`.
 RESOLUTION_CHOICES = (
     "1920x1080",
     "1080x1920",
-    "1280x720",
-    "720x1280",
-    "1024x576",
-    "576x1024",
     "(custom)",
 )
 RESOLUTION_CUSTOM = "(custom)"

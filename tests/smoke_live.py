@@ -5,10 +5,12 @@
 Run from the repo root with the API key resolvable (env, studio file, or
 user config). Skipped automatically when no key is reachable.
 
-Endpoints tested (smallest possible parameters):
+Endpoints tested (smallest possible parameters that the API actually accepts;
+note: 720p was rejected by ltx-2-fast / ltx-2-3-fast in early smoke runs --
+1920x1080 is the only confirmed-accepted value across every current model):
 
-* ``/v1/text-to-video``      -- 1280x720, 4s @ 24fps, ltx-2-fast.
-* ``/v1/image-to-video``     -- 1280x720, 4s @ 24fps, ltx-2-3-fast,
+* ``/v1/text-to-video``      -- 1920x1080, 4s @ 24fps, ltx-2-fast.
+* ``/v1/image-to-video``     -- 1920x1080, 4s @ 24fps, ltx-2-3-fast,
   using a tiny synthesised PNG as the first frame.
 * ``/v1/retake``             -- ltx-2-pro, mode=replace_video, start=0,
   duration=2.0s. Uses the t2v output as the input video so we don't need
@@ -77,7 +79,7 @@ def smoke_text_to_video(client: LTXVClient, out_dir: Path) -> Path:
         prompt="A blue square slowly rotating against a white background.",
         model="ltx-2-fast",
         duration=4,
-        resolution="1280x720",
+        resolution="1920x1080",
         fps=24,
         generate_audio=False,
     )
@@ -94,7 +96,7 @@ def smoke_image_to_video(client: LTXVClient, out_dir: Path) -> Path:
         prompt="The blue square zooms in slowly.",
         model="ltx-2-3-fast",
         duration=4,
-        resolution="1280x720",
+        resolution="1920x1080",
         fps=24,
         generate_audio=False,
     )

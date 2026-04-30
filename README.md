@@ -131,14 +131,20 @@ The four endpoints in their simplest forms:
 ### Text to Video
 
 1. Drop **LTXV API Text to Video**.
-2. Set `prompt`, `model = ltx-2-fast`, `duration = 4`, `resolution = 1280x720`.
+2. Set `prompt`, `model = ltx-2-fast`, `duration = 4`, `resolution = 1920x1080`.
 3. Wire `video` output → `Save Video` (or `AM Write Video`).
 4. Queue Prompt.
+
+> **Resolution note.** LTX rejects sizes that aren't on a per-model
+> accepted list — only `1920x1080` and `1080x1920` are confirmed accepted
+> across every current model variant, so the dropdown is intentionally
+> limited to those. Pick `(custom)` and type into `resolution_custom`
+> if you know your model accepts a different size.
 
 ### Image to Video
 
 1. Drop **Load Image** → wire to **LTXV API Image to Video** `image`.
-2. Set `prompt`, `model`, `duration`, `resolution`.
+2. Set `prompt`, `model`, `duration`, `resolution = 1920x1080`.
 3. (Optional, ltx-2-3 models only) wire a second **Load Image** to `last_frame`
    for end-frame interpolation.
 4. Queue Prompt.
