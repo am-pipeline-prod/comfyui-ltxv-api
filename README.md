@@ -135,11 +135,13 @@ The four endpoints in their simplest forms:
 3. Wire `video` output → `Save Video` (or `AM Write Video`).
 4. Queue Prompt.
 
-> **Resolution note.** LTX rejects sizes that aren't on a per-model
-> accepted list — only `1920x1080` and `1080x1920` are confirmed accepted
-> across every current model variant, so the dropdown is intentionally
-> limited to those. Pick `(custom)` and type into `resolution_custom`
-> if you know your model accepts a different size.
+> **Resolution / fps note.** LTX maintains a per-`(model, resolution, fps)`
+> accepted list and rejects any combination not on it (HTTP 400 with a
+> message like `"FPS 24 is not supported by model ltx-2-fast at resolution
+> 1920x1080"`). Confirmed-accepted at the time of writing:
+> `ltx-2-3-fast` + `1920x1080` + `fps=24` (this is what the i2v / t2v
+> example workflows use). Other combinations may also work — try them
+> and let the API errors guide you.
 
 ### Image to Video
 
