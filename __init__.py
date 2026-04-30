@@ -6,7 +6,7 @@ Registers four nodes under the "LTXV API" category:
 * ``LTXVAPIImageToVideo``    -- POST /v1/image-to-video
 * ``LTXVAPIVideoToVideo``    -- POST /v1/retake (officially "retake"; usable as
   full-clip V2V regen by setting start_time=0, duration=full)
-* ``LTXVAPIVideoToVideoHDR`` -- ⭐ async POST /v2/video-to-video-hdr; returns
+* ``LTXVAPIVideoToVideoHDR`` -- async POST /v2/video-to-video-hdr; returns
   scene-linear EXR frames (HDR-safe IMAGE batch)
 """
 from __future__ import annotations
@@ -48,7 +48,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXVAPITextToVideo":     "LTXV API Text to Video",
     "LTXVAPIImageToVideo":    "LTXV API Image to Video",
     "LTXVAPIVideoToVideo":    "LTXV API Video to Video (Retake)",
-    "LTXVAPIVideoToVideoHDR": "LTXV API Video to Video HDR ⭐",
+    "LTXVAPIVideoToVideoHDR": "LTXV API Video to Video HDR",
 }
 
 logging.getLogger("comfyui-ltxv-api").info(

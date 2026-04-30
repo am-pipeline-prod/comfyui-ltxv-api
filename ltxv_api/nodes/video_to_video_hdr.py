@@ -52,7 +52,7 @@ log = logging.getLogger("comfyui-ltxv-api.video-to-video-hdr")
 
 
 class LTXVAPIVideoToVideoHDR:
-    """⭐ Asynchronous HDR (scene-linear EXR) video-to-video.
+    """Asynchronous HDR (scene-linear EXR) video-to-video.
 
     BILLING: per-second pricing depends on output resolution -- 1080p $0.20/s,
     1440p $0.40/s, 4K $0.80/s. Confirm current rates on the LTX developer
@@ -145,7 +145,7 @@ class LTXVAPIVideoToVideoHDR:
     FUNCTION = "execute"
     CATEGORY = "LTXV API"
     DESCRIPTION = (
-        "⭐ Asynchronous HDR (scene-linear EXR) video-to-video. "
+        "Asynchronous HDR (scene-linear EXR) video-to-video. "
         "Pricing: 1080p $0.20/s, 1440p $0.40/s, 4K $0.80/s. "
         "Output is float32 IMAGE batch -- values may exceed 1.0."
     )

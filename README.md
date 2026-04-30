@@ -19,7 +19,7 @@ weights), use the official local-inference repo instead:
 | **LTXV API Text to Video** | `POST /v1/text-to-video` | MP4 → IMAGE batch + VIDEO + AUDIO |
 | **LTXV API Image to Video** | `POST /v1/image-to-video` | MP4 → IMAGE batch + VIDEO + AUDIO |
 | **LTXV API Video to Video (Retake)** | `POST /v1/retake` | MP4 → IMAGE batch + VIDEO + AUDIO |
-| **LTXV API Video to Video HDR** ⭐ | `POST /v2/video-to-video-hdr` (async) | EXR ZIP → float32 IMAGE batch (HDR) + synthesised VIDEO |
+| **LTXV API Video to Video HDR** | `POST /v2/video-to-video-hdr` (async) | EXR ZIP → float32 IMAGE batch (HDR) + synthesised VIDEO |
 
 All nodes appear under the **LTXV API** category in the ComfyUI node menu.
 Every node emits both `IMAGE` and `VIDEO` sockets in parallel — wire whichever
@@ -121,8 +121,7 @@ change):
   $0.80/s at 4K** — also subject to per-tier frame caps (1080p: 181 frames,
   1440p: 101, 4K: 41).
 
-The HDR node's display name carries a ⭐ to remind you to double-check
-billing before each run.
+Double-check billing on the LTX developer console before each HDR run.
 
 ## Quick examples
 
@@ -163,7 +162,7 @@ The four endpoints in their simplest forms:
    `replace_video`, `replace_audio`).
 4. Queue Prompt.
 
-### Video to Video HDR ⭐
+### Video to Video HDR
 
 1. Wire input the same way as the Retake node (video / image / video_url).
 2. Set `output_fps` to the rate you want the synthesised VIDEO socket to
