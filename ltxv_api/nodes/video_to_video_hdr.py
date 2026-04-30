@@ -99,15 +99,15 @@ class LTXVAPIVideoToVideoHDR:
                 }),
             },
             "optional": {
-                "video": ("VIDEO", {
-                    "tooltip": "Source video. Preferred input.",
-                }),
                 "image": ("IMAGE", {
                     "tooltip": (
                         "Source as IMAGE batch. Encoded to MP4 at fps_for_encoding "
                         "before sending. Tier limits apply: ≤1080p max 181 frames, "
                         "≤1440p max 101, ≤4K max 41."
                     ),
+                }),
+                "video": ("VIDEO", {
+                    "tooltip": "Source video. Preferred input.",
                 }),
                 "video_url": ("STRING", {
                     "default": "", "multiline": False,
@@ -156,8 +156,8 @@ class LTXVAPIVideoToVideoHDR:
         output_fps: float,
         poll_timeout_seconds: int,
         keep_temp_exrs: bool,
-        video: Optional[Any] = None,
         image: Optional[Any] = None,
+        video: Optional[Any] = None,
         video_url: str = "",
     ):
         # Resolve input -> video_uri (URL or base64 data URI).
