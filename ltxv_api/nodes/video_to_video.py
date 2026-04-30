@@ -104,16 +104,16 @@ class LTXVAPIVideoToVideo:
                 }),
             },
             "optional": {
-                "video": ("VIDEO", {
-                    "tooltip": (
-                        "Source video. Preferred input -- the wrapped MP4 / components "
-                        "ride straight through to the request."
-                    ),
-                }),
                 "image": ("IMAGE", {
                     "tooltip": (
                         "Source as IMAGE batch. Encoded to MP4 at fps_for_encoding "
                         "before sending. Use when the upstream node only emits IMAGE."
+                    ),
+                }),
+                "video": ("VIDEO", {
+                    "tooltip": (
+                        "Source video. Preferred input -- the wrapped MP4 / components "
+                        "ride straight through to the request."
                     ),
                 }),
                 "video_url": ("STRING", {
@@ -158,8 +158,8 @@ class LTXVAPIVideoToVideo:
         mode: str,
         resolution: str,
         fps_for_encoding: float,
-        video: Optional[Any] = None,
         image: Optional[Any] = None,
+        video: Optional[Any] = None,
         video_url: str = "",
     ):
         if duration < 2.0:

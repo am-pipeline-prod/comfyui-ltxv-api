@@ -26,8 +26,8 @@
       "order": 1,
       "mode": 0,
       "inputs": [
-        {"name": "video", "type": "VIDEO", "link": 1},
-        {"name": "image", "type": "IMAGE", "link": null}
+        {"name": "image", "type": "IMAGE", "link": null},
+        {"name": "video", "type": "VIDEO", "link": 1}
       ],
       "outputs": [
         {"name": "image", "type": "IMAGE", "links": [2], "slot_index": 0},
@@ -88,7 +88,7 @@
     }
   ],
   "links": [
-    [1, 1, 0, 2, 0, "VIDEO"],
+    [1, 1, 0, 2, 1, "VIDEO"],
     [2, 2, 0, 3, 0, "IMAGE"],
     [3, 2, 1, 4, 0, "VIDEO"],
     [4, 2, 3, 5, 0, "STRING"]
