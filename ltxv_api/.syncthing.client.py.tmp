@@ -9,8 +9,8 @@ Covers the four endpoints the ComfyUI nodes wrap:
 * ``GET  /v2/video-to-video-hdr/{id}``       -- async; poll until terminal
 
 The sync endpoints stream their MP4 response body straight to a temp file --
-the node layer decodes that file into an IMAGE batch tensor and deletes the
-temp MP4 (no ``VIDEO`` socket holds a reference to it).
+the node layer decodes that file into IMAGE tensors and wraps it as a
+ComfyUI ``VIDEO`` socket via ``VideoFromFile``.
 
 The async polling loop uses exponential backoff starting at 5s, capped at
 30s, with a ~10min default ceiling -- matches the LTX docs' "poll every 5s

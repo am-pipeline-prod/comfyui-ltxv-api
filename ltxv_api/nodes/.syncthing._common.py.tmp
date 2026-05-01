@@ -1,6 +1,8 @@
 """Shared helpers for the LTXV API ComfyUI nodes."""
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import torch
 
 # Resolution dropdown values shared across the sync endpoints. The LTX API
@@ -35,6 +37,14 @@ CAMERA_MOTION_CHOICES = (
     "jib_down",
     "focus_shift",
 )
+
+
+def silent_audio_stub() -> Dict[str, Any]:
+    """1-sample silent AUDIO dict, matching the ComfyUI AUDIO convention."""
+    return {
+        "waveform": torch.zeros((1, 1, 1), dtype=torch.float32),
+        "sample_rate": 48000,
+    }
 
 
 def empty_image_tensor() -> "torch.Tensor":

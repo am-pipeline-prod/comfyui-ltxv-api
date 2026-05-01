@@ -12,8 +12,9 @@ comfyui-ltxv-api/
 │   ├── __init__.py                   # public surface re-exports
 │   ├── config.py                     # API key resolution (3-tier)
 │   ├── client.py                     # typed HTTP client + polling
-│   ├── tensors.py                    # IMAGE ↔ MP4/PNG/data-URI
+│   ├── tensors.py                    # IMAGE/VIDEO ↔ MP4/PNG/data-URI
 │   ├── exr_loader.py                 # ZIP → HDR EXR → IMAGE tensor
+│   ├── video_type.py                 # ComfyUI VIDEO type bridge
 │   └── nodes/
 │       ├── __init__.py
 │       ├── _common.py                # widget choices + small helpers
@@ -79,38 +80,28 @@ a presigned URL to a ZIP of EXRs (24h availability).
 Polling cadence: LTX docs recommend "every 5s". The client starts there
 and backs off exponentially up to 30s on 429s; 10 min default ceiling.
 
-## Image-only socket surface (no VIDEO / AUDIO)
+## VIDEO type bridge
 
-Every node emits a single `IMAGE` batch + metadata (info, width, height,
-frame_rate, frame_count) and nothing else. Workflows that need a `VIDEO`
-chain ComfyUI's stock `CreateVideo` (and optionally `SaveVideo`) downstream;
-workflows that take a `VIDEO` upstream chain stock `GetVideoComponents`
-to extract the IMAGE before feeding it into V2V or HDR.
+ComfyUI gained a native `VIDEO` type via `comfy_api.latest`. The bridge
+in `video_type.py` is the same shape as
+[am-pipe-media-io's `_core.video_type`](https://github.com/am-pipeline-prod/am-pipe-media-io/blob/main/am_pipe_media_io/_core/video_type.py)
+— it tries to import `comfy_api.latest`, and degrades gracefully (emits
+`None` on the VIDEO socket) when the import fails. So the package loads
+on older ComfyUI without raising.
 
-The trade-off: generated audio from sync endpoints' `generate_audio=True`
-is not exposed downstream — to suppress that wasted server work, set
-`generate_audio=False` on the relevant nodes. To preserve audio across a
-V2V pass, pull it from `GetVideoComponents` upstream and re-mux into the
-final `CreateVideo` node yourself.
-
-This split (image-only on our side, conversion via stock nodes on the
-caller's side) keeps the surface tight and pushes the format decision to
-exactly one place in the workflow. Earlier prototypes emitted parallel
-`IMAGE` + `VIDEO` + `AUDIO` sockets to mimic
-[am-pipe-media-io's pattern](https://github.com/am-pipeline-prod/am-pipe-media-io)
-but the parallel sockets duplicated state and confused the "convert
-exactly once" intuition; v0.2 pulled them out.
+* SDR nodes wrap the downloaded MP4 with `VideoFromFile(path)` — no
+  re-encode, downstream nodes consume the MP4 directly.
+* The HDR node has no source MP4 (it gets EXRs), so it synthesises a
+  VIDEO via `VideoFromComponents(VideoComponents(images, fps, audio))`.
+  Useful when wiring directly into `SaveVideo`; for HDR-safe export, prefer
+  the IMAGE socket and an EXR-aware writer.
 
 ## Tensor I/O
 
 * IMAGE → PNG bytes / data URI: PIL, lossless PNG (`compress_level=3`).
 * IMAGE batch → MP4: imageio + libx264 + yuv420p, even/even dimensions
-  enforced (libx264 rejects odd-sized frames at yuv420p). Used to
-  build the `video_uri` request body when a node accepts an IMAGE input.
-* MP4 → IMAGE batch: imageio + ffmpeg. Drops alpha if present. Used to
-  decode the sync endpoints' MP4 response into the output IMAGE batch;
-  the temp MP4 file is deleted after decode (no `VIDEO` socket holds
-  a reference).
+  enforced (libx264 rejects odd-sized frames at yuv420p).
+* MP4 → IMAGE batch: imageio + ffmpeg, drops alpha if present.
 * MP4 file → base64 data URI: read whole file, base64.b64encode.
 * EXR → IMAGE: OpenCV `IMREAD_UNCHANGED | IMREAD_ANYDEPTH`, BGR→RGB,
   float32, **no clamp** (HDR pixels can exceed 1.0).

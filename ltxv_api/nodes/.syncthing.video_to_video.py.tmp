@@ -7,9 +7,9 @@ full-clip video-to-video regen.
 
 Inputs are flexible -- wire any one of:
 
-* ``image`` (IMAGE batch) -- multi-frame batch encoded to MP4 internally.
-  To consume an upstream ``VIDEO`` socket (Load Video, partner API node),
-  chain ComfyUI's stock ``GetVideoComponents`` first to extract its IMAGE.
+* ``video`` (VIDEO socket) -- preferred when chained from another VIDEO-emitting
+  node (Read Video, another LTXV API node).
+* ``image`` (IMAGE batch) -- a multi-frame batch is encoded to MP4 first.
 * ``video_url`` (STRING) -- a public HTTPS URL. Recommended for very large
   inputs that would push the base64 payload past request-size limits.
 
@@ -27,12 +27,12 @@ on the canvas):
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
-from .. import tensors
+from .. import tensors, video_type
 from ..client import LTXVClient
 from ..config import resolve_api_key
+from ._common import silent_audio_stub
 
 log = logging.getLogger("comfyui-ltxv-api.video-to-video")
 
@@ -107,9 +107,13 @@ class LTXVAPIVideoToVideo:
                 "image": ("IMAGE", {
                     "tooltip": (
                         "Source as IMAGE batch. Encoded to MP4 at fps_for_encoding "
-                        "before sending. To bring in a VIDEO from upstream, "
-                        "use ComfyUI's stock GetVideoComponents node and wire its "
-                        "IMAGE output here."
+                        "before sending. Use when the upstream node only emits IMAGE."
+                    ),
+                }),
+                "video": ("VIDEO", {
+                    "tooltip": (
+                        "Source video. Preferred input -- the wrapped MP4 / components "
+                        "ride straight through to the request."
                     ),
                 }),
                 "video_url": ("STRING", {
@@ -117,23 +121,25 @@ class LTXVAPIVideoToVideo:
                     "placeholder": "(optional) HTTPS URL — used verbatim instead of base64",
                     "tooltip": (
                         "Public HTTPS URL of the input video. When non-empty, this "
-                        "wins over the `image` socket and the request uses the URL "
-                        "verbatim. Recommended for inputs too large for base64 "
-                        "(10s of MB+)."
+                        "wins over the `video` / `image` sockets and the request "
+                        "uses the URL verbatim. Recommended for inputs too large "
+                        "for base64 (10s of MB+)."
                     ),
                 }),
             },
         }
 
     RETURN_TYPES = (
-        "IMAGE", "STRING", "INT", "INT", "FLOAT", "INT",
+        "IMAGE", "VIDEO", "AUDIO", "STRING", "INT", "INT", "FLOAT", "INT",
     )
     RETURN_NAMES = (
-        "image", "info",
+        "image", "video", "audio", "info",
         "width", "height", "frame_rate", "frame_count",
     )
     OUTPUT_TOOLTIPS = (
         "Decoded frames as IMAGE batch (N×H×W×C float32 in [0,1]).",
+        "Native ComfyUI VIDEO wrapping the downloaded MP4 (lazy decode).",
+        "Audio track from the MP4 (silent stub when mode=replace_video and the input had no audio).",
         "Human-readable summary.",
         "Frame width in pixels.",
         "Frame height in pixels.",
@@ -153,6 +159,7 @@ class LTXVAPIVideoToVideo:
         resolution: str,
         fps_for_encoding: float,
         image: Optional[Any] = None,
+        video: Optional[Any] = None,
         video_url: str = "",
     ):
         if duration < 2.0:
@@ -161,6 +168,7 @@ class LTXVAPIVideoToVideo:
             )
 
         video_uri, temp_mp4 = tensors.resolve_video_uri(
+            video=video,
             image=image,
             video_url=video_url,
             fps_override=float(fps_for_encoding),
@@ -193,20 +201,16 @@ class LTXVAPIVideoToVideo:
                 except OSError:
                     pass
 
-        try:
-            out_image, decoded_fps = tensors.mp4_to_image_batch(out_path)
-        finally:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
-
+        out_image, decoded_fps = tensors.mp4_to_image_batch(out_path)
         n_frames = int(out_image.shape[0])
         height = int(out_image.shape[1])
         width = int(out_image.shape[2])
+
+        video_obj = video_type.make_video_from_file(str(out_path))
+        audio = silent_audio_stub()
 
         info_str = (
             f"{width}x{height} @ {decoded_fps:.3f}fps, {n_frames} frames "
             f"(model={model}, mode={mode}, start={start_time:.2f}s, dur={duration:.2f}s)"
         )
-        return (out_image, info_str, width, height, float(decoded_fps), n_frames)
+        return (out_image, video_obj, audio, info_str, width, height, float(decoded_fps), n_frames)

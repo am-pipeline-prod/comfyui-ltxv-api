@@ -1,14 +1,11 @@
 """LTXV API Image-to-Video — ComfyUI node.
 
 Wraps ``POST /v1/image-to-video``. Accepts an IMAGE input (first frame),
-encodes it as a base64 PNG data URI, sends to LTX, and returns the MP4
-decoded back into a ComfyUI ``IMAGE`` batch.
+encodes it as a base64 PNG data URI, sends to LTX, and returns the MP4 as
+both an IMAGE batch and a VIDEO socket.
 
 Optional ``last_frame`` IMAGE input (LTX-2.3 models only) drives end-frame
 interpolation.
-
-For workflows that need a ``VIDEO`` socket, wire ``image`` → ComfyUI's
-stock ``CreateVideo`` node downstream.
 
 Auth: ``LTXV_API_KEY`` env var (preferred), or the studio config / user
 TOML fallback chain in :mod:`ltxv_api.config`.
@@ -16,10 +13,9 @@ TOML fallback chain in :mod:`ltxv_api.config`.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
-from .. import tensors
+from .. import tensors, video_type
 from ..client import LTXVClient
 from ..config import resolve_api_key
 from ._common import (
@@ -28,6 +24,7 @@ from ._common import (
     T2V_MODEL_CHOICES,
     resolve_camera_motion,
     resolve_resolution,
+    silent_audio_stub,
 )
 
 log = logging.getLogger("comfyui-ltxv-api.image-to-video")
@@ -90,14 +87,16 @@ class LTXVAPIImageToVideo:
         }
 
     RETURN_TYPES = (
-        "IMAGE", "STRING", "INT", "INT", "FLOAT", "INT",
+        "IMAGE", "VIDEO", "AUDIO", "STRING", "INT", "INT", "FLOAT", "INT",
     )
     RETURN_NAMES = (
-        "image", "info",
+        "image", "video", "audio", "info",
         "width", "height", "frame_rate", "frame_count",
     )
     OUTPUT_TOOLTIPS = (
         "Decoded frames as IMAGE batch (N×H×W×C float32 in [0,1]).",
+        "Native ComfyUI VIDEO wrapping the downloaded MP4 (lazy decode).",
+        "Audio track from the MP4 (silent stub when generate_audio=Off).",
         "Human-readable summary.",
         "Frame width in pixels.",
         "Frame height in pixels.",
@@ -161,20 +160,16 @@ class LTXVAPIImageToVideo:
             last_frame_uri=last_frame_uri,
         )
 
-        try:
-            out_image, decoded_fps = tensors.mp4_to_image_batch(out_path)
-        finally:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
-
+        out_image, decoded_fps = tensors.mp4_to_image_batch(out_path)
         n_frames = int(out_image.shape[0])
         height = int(out_image.shape[1])
         width = int(out_image.shape[2])
+
+        video_obj = video_type.make_video_from_file(str(out_path))
+        audio = silent_audio_stub()
 
         info_str = (
             f"{width}x{height} @ {decoded_fps:.3f}fps, {n_frames} frames "
             f"(model={model}, duration={duration}s, last_frame={last_frame_uri is not None})"
         )
-        return (out_image, info_str, width, height, float(decoded_fps), n_frames)
+        return (out_image, video_obj, audio, info_str, width, height, float(decoded_fps), n_frames)

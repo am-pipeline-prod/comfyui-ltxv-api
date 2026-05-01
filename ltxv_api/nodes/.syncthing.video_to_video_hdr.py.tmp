@@ -5,12 +5,11 @@ polling loop. The endpoint regenerates an SDR input as a sequence of
 **scene-linear EXR frames** (HDR) and returns a presigned URL to a ZIP of
 those frames.
 
-Output is an IMAGE batch of float32 frames -- HDR-safe (values may exceed
-1.0, which is the whole point). To bring the frames back together as a
-ComfyUI ``VIDEO`` (e.g. for an SDR preview encode), wire ``image`` into
-ComfyUI's stock ``CreateVideo`` node downstream; for HDR-safe export,
-wire ``image`` into an EXR-aware writer (e.g. ``AM Write Image`` with
-``ext=exr``) instead.
+Output is an IMAGE batch of float32 frames -- HDR-safe (values may exceed 1.0,
+which is the whole point) -- plus a synthesised VIDEO socket built from
+:func:`ltxv_api.video_type.make_video_from_components` so downstream
+``SaveVideo`` (or ``AM Write Video``) can reach the data without the artist
+having to plumb the IMAGE socket separately.
 
 Pricing (per :doc:`api-reference-snapshot.md` and the LTX docs):
 
@@ -38,7 +37,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from .. import exr_loader, tensors
+from .. import exr_loader, tensors, video_type
 from ..client import (
     LTXVClient,
     LTXVError,
@@ -47,6 +46,7 @@ from ..client import (
     hdr_result_url,
 )
 from ..config import resolve_api_key
+from ._common import silent_audio_stub
 
 log = logging.getLogger("comfyui-ltxv-api.video-to-video-hdr")
 
@@ -66,17 +66,19 @@ class LTXVAPIVideoToVideoHDR:
                 "fps_for_encoding": ("FLOAT", {
                     "default": 24.0, "min": 1.0, "max": 60.0, "step": 0.001,
                     "tooltip": (
-                        "FPS to use when encoding an IMAGE batch to MP4 for the "
-                        "request body. Ignored when video_url is used."
+                        "FPS to use when encoding an IMAGE batch to MP4 (for the "
+                        "request body). Ignored when video_url is used or when a "
+                        "VIDEO socket is wired (the VIDEO's own fps wins). The "
+                        "output EXR frame rate is reported separately on the "
+                        "frame_rate output socket."
                     ),
                 }),
                 "output_fps": ("FLOAT", {
                     "default": 24.0, "min": 1.0, "max": 60.0, "step": 0.001,
                     "tooltip": (
-                        "FPS reported on the `frame_rate` output socket. The EXR "
-                        "ZIP from the API doesn't carry a time base, so this is "
-                        "what downstream consumers (CreateVideo, AM Write Image) "
-                        "will see for cadence."
+                        "FPS to tag on the synthesised VIDEO output socket. The "
+                        "EXR ZIP doesn't carry a time base -- this is what the "
+                        "downstream SaveVideo / AM Write Video will encode at."
                     ),
                 }),
                 "poll_timeout_seconds": ("INT", {
@@ -101,32 +103,39 @@ class LTXVAPIVideoToVideoHDR:
                     "tooltip": (
                         "Source as IMAGE batch. Encoded to MP4 at fps_for_encoding "
                         "before sending. Tier limits apply: ≤1080p max 181 frames, "
-                        "≤1440p max 101, ≤4K max 41. To bring in a VIDEO from "
-                        "upstream, chain a stock GetVideoComponents node first."
+                        "≤1440p max 101, ≤4K max 41."
                     ),
+                }),
+                "video": ("VIDEO", {
+                    "tooltip": "Source video. Preferred input.",
                 }),
                 "video_url": ("STRING", {
                     "default": "", "multiline": False,
                     "placeholder": "(optional) HTTPS URL — used verbatim instead of base64",
                     "tooltip": (
                         "Public HTTPS URL of the SDR input. When non-empty, wins "
-                        "over the `image` socket. Recommended for inputs that "
-                        "would balloon the base64 request body."
+                        "over the `video` / `image` sockets. Recommended for "
+                        "inputs that would balloon the base64 request body."
                     ),
                 }),
             },
         }
 
     RETURN_TYPES = (
-        "IMAGE", "STRING", "INT", "INT", "FLOAT", "INT",
+        "IMAGE", "VIDEO", "AUDIO", "STRING", "INT", "INT", "FLOAT", "INT",
     )
     RETURN_NAMES = (
-        "image", "info",
+        "image", "video", "audio", "info",
         "width", "height", "frame_rate", "frame_count",
     )
     OUTPUT_TOOLTIPS = (
         "HDR EXR frames as IMAGE batch (N×H×W×3 float32, *not clipped to [0,1]* — "
         "scene-linear values can and do exceed 1.0).",
+        "Synthesised ComfyUI VIDEO built from the EXR batch + output_fps. No source "
+        "MP4 -- this socket is only useful when wiring directly into SaveVideo / "
+        "AM Write Video; for HDR-aware export prefer the IMAGE socket and an "
+        "EXR-aware writer (AM Write Image with EXR output).",
+        "Silent audio stub. The HDR endpoint produces no audio.",
         "Human-readable summary including the LTX job id.",
         "Frame width in pixels.",
         "Frame height in pixels.",
@@ -148,10 +157,12 @@ class LTXVAPIVideoToVideoHDR:
         poll_timeout_seconds: int,
         keep_temp_exrs: bool,
         image: Optional[Any] = None,
+        video: Optional[Any] = None,
         video_url: str = "",
     ):
         # Resolve input -> video_uri (URL or base64 data URI).
         video_uri, temp_mp4 = tensors.resolve_video_uri(
+            video=video,
             image=image,
             video_url=video_url,
             fps_override=float(fps_for_encoding),
@@ -241,11 +252,14 @@ class LTXVAPIVideoToVideoHDR:
             height = int(tensor.shape[1])
             width = int(tensor.shape[2])
 
+            audio = silent_audio_stub()
+            video_obj = video_type.make_video_from_components(tensor, float(output_fps))
+
             info_str = (
                 f"{width}x{height} {n_frames} EXR frames @ {output_fps:.3f}fps "
                 f"(job={terminal.id})"
             )
-            return (tensor, info_str, width, height, float(output_fps), n_frames)
+            return (tensor, video_obj, audio, info_str, width, height, float(output_fps), n_frames)
         finally:
             if not keep_temp_exrs:
                 _cleanup_paths(frame_paths)

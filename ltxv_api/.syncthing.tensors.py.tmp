@@ -239,6 +239,7 @@ def download_url_to_path(url: str, suffix: str, *, timeout: float = 300.0) -> Pa
 
 def resolve_video_uri(
     *,
+    video=None,
     image=None,
     video_url: str = "",
     fps_override: float = DEFAULT_VIDEO_FPS,
@@ -249,25 +250,34 @@ def resolve_video_uri(
 
     1. ``video_url`` -- explicit HTTPS URL string typed/wired by the artist.
        Used verbatim. Recommended for large inputs.
-    2. ``image`` -- an IMAGE batch tensor. Encoded as MP4 at ``fps_override``.
+    2. ``video`` -- a ComfyUI VIDEO socket. Extracted via
+       :func:`video_type.get_components` and re-encoded as MP4 if necessary.
+    3. ``image`` -- an IMAGE batch tensor. Encoded as MP4 at ``fps_override``.
 
     Returns ``(uri, temp_mp4_path)``. ``temp_mp4_path`` is the on-disk MP4 the
     caller can clean up after the request, or ``None`` when the artist provided
     an external URL (nothing to clean up).
-
-    To consume a ComfyUI ``VIDEO`` socket from an upstream node, chain a stock
-    ``GetVideoComponents`` node first to extract the IMAGE batch, then wire
-    that into ``image`` here.
     """
     url = (video_url or "").strip()
     if url:
         return url, None
+
+    if video is not None:
+        from . import video_type  # local import to avoid circular surface
+        components = video_type.get_components(video)
+        if components is not None:
+            v_image, _audio, v_fps = components
+            mp4 = image_batch_to_mp4(
+                v_image,
+                fps=float(v_fps) if v_fps and v_fps > 0 else fps_override,
+            )
+            return mp4_file_to_data_uri(mp4), mp4
 
     if image is not None:
         mp4 = image_batch_to_mp4(image, fps=fps_override)
         return mp4_file_to_data_uri(mp4), mp4
 
     raise ValueError(
-        "no video input -- wire either `image` (IMAGE batch) or "
-        "`video_url` (STRING) on this node."
+        "no video input -- wire either `video` (VIDEO), `image` (IMAGE batch), "
+        "or `video_url` (STRING) on this node."
     )

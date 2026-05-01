@@ -1,6 +1,6 @@
 {
-  "last_node_id": 4,
-  "last_link_id": 4,
+  "last_node_id": 3,
+  "last_link_id": 2,
   "nodes": [
     {
       "id": 1,
@@ -13,9 +13,7 @@
       "inputs": [],
       "outputs": [
         {"name": "image", "type": "IMAGE", "links": [1], "slot_index": 0},
-        {"name": "video", "type": "VIDEO", "links": [2], "slot_index": 1},
-        {"name": "audio", "type": "AUDIO", "links": null},
-        {"name": "info", "type": "STRING", "links": [3], "slot_index": 3},
+        {"name": "info", "type": "STRING", "links": [2], "slot_index": 1},
         {"name": "width", "type": "INT", "links": null},
         {"name": "height", "type": "INT", "links": null},
         {"name": "frame_rate", "type": "FLOAT", "links": null},
@@ -46,39 +44,26 @@
     },
     {
       "id": 3,
-      "type": "SaveVideo",
+      "type": "ShowText|pysssss",
       "pos": [640, 560],
-      "size": [320, 120],
+      "size": [320, 80],
       "flags": {},
       "order": 2,
       "mode": 0,
-      "inputs": [{"name": "video", "type": "VIDEO", "link": 2}],
-      "properties": {"Node name for S&R": "SaveVideo"},
-      "widgets_values": ["ltxv_t2v"]
-    },
-    {
-      "id": 4,
-      "type": "ShowText|pysssss",
-      "pos": [640, 720],
-      "size": [320, 80],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [{"name": "text", "type": "STRING", "link": 3, "widget": {"name": "text"}}],
+      "inputs": [{"name": "text", "type": "STRING", "link": 2, "widget": {"name": "text"}}],
       "properties": {"Node name for S&R": "ShowText|pysssss"},
       "widgets_values": [""]
     }
   ],
   "links": [
     [1, 1, 0, 2, 0, "IMAGE"],
-    [2, 1, 1, 3, 0, "VIDEO"],
-    [3, 1, 3, 4, 0, "STRING"]
+    [2, 1, 1, 3, 0, "STRING"]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "comfyui-ltxv-api": {
-      "description": "Minimal text-to-video example: prompt -> LTX -> preview first frame + save MP4 + show info string."
+      "description": "Minimal text-to-video example: prompt -> LTX -> preview frames + show info string. To re-encode the IMAGE batch into an MP4, wire `image` and `frame_rate` into ComfyUI's stock CreateVideo node, then SaveVideo."
     }
   },
   "version": 0.4
