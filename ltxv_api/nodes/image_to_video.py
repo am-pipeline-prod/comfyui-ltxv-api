@@ -1,14 +1,12 @@
 """LTXV API Image-to-Video — ComfyUI node.
 
-Wraps ``POST /v1/image-to-video``. Accepts an IMAGE input (first frame),
-encodes it as a base64 PNG data URI, sends to LTX, and returns the MP4
-decoded back into a ComfyUI ``IMAGE`` batch.
+Wraps ``POST /v1/image-to-video``. Accepts an IMAGE input (single still --
+the first frame), encodes it as a base64 PNG data URI, sends to LTX, and
+emits the response MP4 as a native ComfyUI ``VIDEO`` socket. Workflows that
+need separate frames or audio chain ``GetVideoComponents`` downstream.
 
 Optional ``last_frame`` IMAGE input (LTX-2.3 models only) drives end-frame
 interpolation.
-
-For workflows that need a ``VIDEO`` socket, wire ``image`` → ComfyUI's
-stock ``CreateVideo`` node downstream.
 
 Auth: ``LTXV_API_KEY`` env var (preferred), or the studio config / user
 TOML fallback chain in :mod:`ltxv_api.config`.
@@ -16,10 +14,9 @@ TOML fallback chain in :mod:`ltxv_api.config`.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
-from .. import tensors
+from .. import tensors, video_type
 from ..client import LTXVClient
 from ..config import resolve_api_key
 from ._common import (
@@ -48,7 +45,7 @@ class LTXVAPIImageToVideo:
                     "tooltip": "Text describing how the image should animate.",
                 }),
                 "model": (list(T2V_MODEL_CHOICES), {
-                    "default": "ltx-2-fast",
+                    "default": "ltx-2-3-fast",
                     "tooltip": (
                         "LTX model variant. last_frame is only honored by ltx-2-3-fast / ltx-2-3-pro."
                     ),
@@ -72,7 +69,10 @@ class LTXVAPIImageToVideo:
                 }),
                 "generate_audio": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "When On, the API generates a synced audio track in the MP4.",
+                    "tooltip": (
+                        "When On, the API generates a synced audio track in the MP4 "
+                        "(rides through the VIDEO socket)."
+                    ),
                 }),
                 "camera_motion": (list(CAMERA_MOTION_CHOICES), {
                     "default": CAMERA_MOTION_CHOICES[0],
@@ -90,19 +90,21 @@ class LTXVAPIImageToVideo:
         }
 
     RETURN_TYPES = (
-        "IMAGE", "STRING", "INT", "INT", "FLOAT", "INT",
+        "VIDEO", "STRING", "INT", "INT", "FLOAT", "INT",
     )
     RETURN_NAMES = (
-        "image", "info",
+        "video", "info",
         "width", "height", "frame_rate", "frame_count",
     )
     OUTPUT_TOOLTIPS = (
-        "Decoded frames as IMAGE batch (N×H×W×C float32 in [0,1]).",
+        "Native ComfyUI VIDEO wrapping the downloaded MP4 (lazy decode). "
+        "Wire to SaveVideo / GetVideoComponents / partner API nodes. "
+        "Carries the API-generated audio track when generate_audio=True.",
         "Human-readable summary.",
         "Frame width in pixels.",
         "Frame height in pixels.",
-        "MP4 frame rate as decoded from the container.",
-        "Number of frames decoded into the IMAGE batch.",
+        "MP4 frame rate as probed from the container.",
+        "Number of frames in the MP4 container.",
     )
     FUNCTION = "execute"
     CATEGORY = "LTXV API"
@@ -161,20 +163,18 @@ class LTXVAPIImageToVideo:
             last_frame_uri=last_frame_uri,
         )
 
-        try:
-            out_image, decoded_fps = tensors.mp4_to_image_batch(out_path)
-        finally:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
+        width, height, n_frames, decoded_fps = tensors.mp4_probe(out_path)
 
-        n_frames = int(out_image.shape[0])
-        height = int(out_image.shape[1])
-        width = int(out_image.shape[2])
+        video_obj = video_type.make_video_from_file(str(out_path))
+        if video_obj is None:
+            raise RuntimeError(
+                "Native ComfyUI VIDEO type isn't reachable (comfy_api.latest "
+                "import failed). Update ComfyUI to a recent build that ships "
+                "the VIDEO type."
+            )
 
         info_str = (
             f"{width}x{height} @ {decoded_fps:.3f}fps, {n_frames} frames "
             f"(model={model}, duration={duration}s, last_frame={last_frame_uri is not None})"
         )
-        return (out_image, info_str, width, height, float(decoded_fps), n_frames)
+        return (video_obj, info_str, width, height, float(decoded_fps), n_frames)

@@ -183,6 +183,44 @@ def image_batch_to_mp4(image, *, fps: float = DEFAULT_VIDEO_FPS) -> Path:
     return path
 
 
+def mp4_probe(path: Path) -> Tuple[int, int, int, float]:
+    """Cheap metadata-only probe: ``(width, height, frame_count, fps)``.
+
+    Reads the container header via imageio's FFmpeg plugin without decoding
+    the full pixel stream. Used by VIDEO-emitting nodes that don't need the
+    IMAGE batch for their own output -- only the metadata sockets.
+
+    Falls back to a full-decode shape probe if the metadata is incomplete
+    on this container (rare, but happens for MP4s without proper duration
+    headers).
+    """
+    iio = _require_imageio()
+    width = height = frame_count = 0
+    fps = DEFAULT_VIDEO_FPS
+    try:
+        meta = iio.immeta(path, plugin="FFMPEG")
+        size = meta.get("size") or meta.get("source_size")
+        if size and len(size) == 2:
+            width, height = int(size[0]), int(size[1])
+        fps = float(meta.get("fps", DEFAULT_VIDEO_FPS))
+        nframes = meta.get("nframes")
+        if isinstance(nframes, (int, float)) and nframes != float("inf"):
+            frame_count = int(nframes)
+        elif meta.get("duration") and fps:
+            frame_count = int(round(float(meta["duration"]) * fps))
+    except Exception:  # noqa: BLE001 -- fall through to full decode
+        pass
+
+    if width == 0 or height == 0 or frame_count == 0:
+        # Header didn't carry full geometry; fall back to a full decode.
+        tensor, fps = mp4_to_image_batch(path)
+        frame_count = int(tensor.shape[0])
+        height = int(tensor.shape[1])
+        width = int(tensor.shape[2])
+
+    return width, height, frame_count, float(fps)
+
+
 def mp4_to_image_batch(path: Path) -> Tuple["torch.Tensor", float]:  # type: ignore[name-defined]
     """Decode an MP4 file to ``([T, H, W, 3] float tensor, fps)``."""
     iio = _require_imageio()
@@ -239,7 +277,7 @@ def download_url_to_path(url: str, suffix: str, *, timeout: float = 300.0) -> Pa
 
 def resolve_video_uri(
     *,
-    image=None,
+    video=None,
     video_url: str = "",
     fps_override: float = DEFAULT_VIDEO_FPS,
 ) -> Tuple[str, Optional[Path]]:
@@ -249,25 +287,48 @@ def resolve_video_uri(
 
     1. ``video_url`` -- explicit HTTPS URL string typed/wired by the artist.
        Used verbatim. Recommended for large inputs.
-    2. ``image`` -- an IMAGE batch tensor. Encoded as MP4 at ``fps_override``.
+    2. ``video`` -- a ComfyUI ``VIDEO`` socket. When the VIDEO is backed by
+       an on-disk MP4 (``VideoFromFile``), the original bytes are read
+       straight off disk and base64-encoded -- preserves audio and avoids
+       a re-encode. When it isn't (``VideoFromComponents``, partner API
+       wrappers), components are extracted and re-encoded as MP4 via
+       libx264 at the source's native fps; in that fallback path **the
+       audio stream is dropped on upload** because libx264-only mux has
+       no audio track. Use ``video_url`` if pristine audio matters.
 
-    Returns ``(uri, temp_mp4_path)``. ``temp_mp4_path`` is the on-disk MP4 the
-    caller can clean up after the request, or ``None`` when the artist provided
-    an external URL (nothing to clean up).
-
-    To consume a ComfyUI ``VIDEO`` socket from an upstream node, chain a stock
-    ``GetVideoComponents`` node first to extract the IMAGE batch, then wire
-    that into ``image`` here.
+    Returns ``(uri, temp_mp4_path)``. ``temp_mp4_path`` is the on-disk MP4
+    we wrote (so the caller can clean up after the request); ``None`` when
+    the artist provided an external URL or when we read straight from a
+    file-backed VIDEO without writing anything new.
     """
     url = (video_url or "").strip()
     if url:
         return url, None
 
-    if image is not None:
-        mp4 = image_batch_to_mp4(image, fps=fps_override)
-        return mp4_file_to_data_uri(mp4), mp4
+    if video is None:
+        raise ValueError(
+            "no video input -- wire either `video` (VIDEO) or "
+            "`video_url` (STRING) on this node."
+        )
 
-    raise ValueError(
-        "no video input -- wire either `image` (IMAGE batch) or "
-        "`video_url` (STRING) on this node."
-    )
+    from . import video_type  # local import to avoid a hard dependency at module load
+
+    # Fast path: file-backed VIDEO. Read the container bytes directly to
+    # preserve audio and avoid a libx264 round trip.
+    src_path = video_type.get_source_path(video)
+    if src_path is not None:
+        return mp4_file_to_data_uri(src_path), None
+
+    # Component-derived VIDEO (no backing file). Re-encode the IMAGE
+    # batch to MP4. AUDIO is lost in this branch -- documented in the
+    # docstring; users who need audio-preserving uploads should use
+    # video_url with a public HTTPS URL.
+    components = video_type.get_components(video)
+    if components is None:
+        raise ValueError(
+            "VIDEO input could not be decomposed into components; cannot upload."
+        )
+    images, _audio, src_fps = components
+    fps = float(src_fps) if src_fps and src_fps > 0 else fps_override
+    mp4 = image_batch_to_mp4(images, fps=fps)
+    return mp4_file_to_data_uri(mp4), mp4

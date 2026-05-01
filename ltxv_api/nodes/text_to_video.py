@@ -1,12 +1,10 @@
 """LTXV API Text-to-Video — ComfyUI node.
 
-Wraps ``POST /v1/text-to-video``. Returns an MP4 from the LTX endpoint,
-decodes it on disk, and emits the frames as a ComfyUI ``IMAGE`` batch.
-
-For workflows that need a ``VIDEO`` socket (Save Video, Preview Video,
-partner API nodes) wire ``image`` → ComfyUI's stock ``CreateVideo`` node;
-for separate audio access, save the rendered MP4 separately or set
-``generate_audio = False`` to keep the stack purely IMAGE-based.
+Wraps ``POST /v1/text-to-video``. The API returns an MP4 (frames + optional
+audio in one container); we stream it to ComfyUI's temp dir, wrap it as a
+native ComfyUI ``VIDEO`` socket via ``VideoFromFile`` (lazy, zero re-decode),
+and emit it. Workflows that need separate IMAGE frames or AUDIO chain
+ComfyUI's stock ``GetVideoComponents`` downstream.
 
 Auth: ``LTXV_API_KEY`` env var (preferred), or the studio config / user
 TOML fallback chain in :mod:`ltxv_api.config`.
@@ -14,16 +12,14 @@ TOML fallback chain in :mod:`ltxv_api.config`.
 from __future__ import annotations
 
 import logging
-import os
 
-from .. import tensors
+from .. import tensors, video_type
 from ..client import LTXVClient
 from ..config import resolve_api_key
 from ._common import (
     CAMERA_MOTION_CHOICES,
     RESOLUTION_CHOICES,
     T2V_MODEL_CHOICES,
-    empty_image_tensor,
     resolve_camera_motion,
     resolve_resolution,
 )
@@ -43,7 +39,7 @@ class LTXVAPITextToVideo:
                     "tooltip": "Text prompt describing the desired video content.",
                 }),
                 "model": (list(T2V_MODEL_CHOICES), {
-                    "default": "ltx-2-fast",
+                    "default": "ltx-2-3-fast",
                     "tooltip": (
                         "LTX model variant. ltx-2-fast / ltx-2-3-fast = lower cost, "
                         "lower quality. ltx-2-pro / ltx-2-3-pro = higher quality, "
@@ -75,7 +71,7 @@ class LTXVAPITextToVideo:
                     "default": True,
                     "tooltip": (
                         "When On, the API generates a synced audio track and includes "
-                        "it in the MP4. Off = silent video."
+                        "it in the MP4 (rides through the VIDEO socket). Off = silent video."
                     ),
                 }),
                 "camera_motion": (list(CAMERA_MOTION_CHOICES), {
@@ -89,19 +85,21 @@ class LTXVAPITextToVideo:
         }
 
     RETURN_TYPES = (
-        "IMAGE", "STRING", "INT", "INT", "FLOAT", "INT",
+        "VIDEO", "STRING", "INT", "INT", "FLOAT", "INT",
     )
     RETURN_NAMES = (
-        "image", "info",
+        "video", "info",
         "width", "height", "frame_rate", "frame_count",
     )
     OUTPUT_TOOLTIPS = (
-        "Decoded frames as IMAGE batch (N×H×W×C float32 in [0,1]).",
+        "Native ComfyUI VIDEO wrapping the downloaded MP4 (lazy decode). "
+        "Wire to SaveVideo / GetVideoComponents / partner API nodes. "
+        "Carries the API-generated audio track when generate_audio=True.",
         "Human-readable summary: dimensions, fps, frame count, model.",
         "Frame width in pixels.",
         "Frame height in pixels.",
-        "MP4 frame rate as decoded from the container.",
-        "Number of frames decoded into the IMAGE batch.",
+        "MP4 frame rate as probed from the container.",
+        "Number of frames in the MP4 container.",
     )
     FUNCTION = "execute"
     CATEGORY = "LTXV API"
@@ -142,26 +140,22 @@ class LTXVAPITextToVideo:
             camera_motion=camera_value,
         )
 
-        try:
-            image, decoded_fps = tensors.mp4_to_image_batch(out_path)
-        finally:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
+        # Header-only probe for the metadata sockets; the VIDEO socket
+        # itself is lazy and re-decodes through VideoFromFile only when a
+        # downstream consumer asks for frames.
+        width, height, n_frames, decoded_fps = tensors.mp4_probe(out_path)
 
-        n_frames = int(image.shape[0])
-        height = int(image.shape[1])
-        width = int(image.shape[2])
+        video_obj = video_type.make_video_from_file(str(out_path))
+        if video_obj is None:
+            raise RuntimeError(
+                "Native ComfyUI VIDEO type isn't reachable (comfy_api.latest "
+                "import failed). Update ComfyUI to a recent build that ships "
+                "the VIDEO type, or wire the request flow through a custom "
+                "video reader downstream."
+            )
 
         info_str = (
             f"{width}x{height} @ {decoded_fps:.3f}fps, {n_frames} frames "
             f"(model={model}, duration={duration}s)"
         )
-        return (image, info_str, width, height, float(decoded_fps), n_frames)
-
-
-# Defensive empty result helper -- unused in the happy path but useful for
-# tests that need a tuple of the right shape without hitting the API.
-def empty_result() -> tuple:
-    return (empty_image_tensor(), "(empty)", 64, 64, 0.0, 1)
+        return (video_obj, info_str, width, height, float(decoded_fps), n_frames)

@@ -31,7 +31,7 @@
         {"name": "last_frame", "type": "IMAGE", "link": null}
       ],
       "outputs": [
-        {"name": "image", "type": "IMAGE", "links": [2], "slot_index": 0},
+        {"name": "video", "type": "VIDEO", "links": [2], "slot_index": 0},
         {"name": "info", "type": "STRING", "links": [3], "slot_index": 1},
         {"name": "width", "type": "INT", "links": null},
         {"name": "height", "type": "INT", "links": null},
@@ -52,19 +52,20 @@
     },
     {
       "id": 3,
-      "type": "PreviewImage",
+      "type": "SaveVideo",
       "pos": [920, 200],
-      "size": [320, 320],
+      "size": [320, 200],
       "flags": {},
       "order": 2,
       "mode": 0,
-      "inputs": [{"name": "images", "type": "IMAGE", "link": 2}],
-      "properties": {"Node name for S&R": "PreviewImage"}
+      "inputs": [{"name": "video", "type": "VIDEO", "link": 2}],
+      "properties": {"Node name for S&R": "SaveVideo"},
+      "widgets_values": ["ltxv_i2v"]
     },
     {
       "id": 4,
       "type": "ShowText|pysssss",
-      "pos": [920, 560],
+      "pos": [920, 440],
       "size": [320, 80],
       "flags": {},
       "order": 3,
@@ -76,14 +77,14 @@
   ],
   "links": [
     [1, 1, 0, 2, 0, "IMAGE"],
-    [2, 2, 0, 3, 0, "IMAGE"],
+    [2, 2, 0, 3, 0, "VIDEO"],
     [3, 2, 1, 4, 0, "STRING"]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "comfyui-ltxv-api": {
-      "description": "Image-to-video: LoadImage -> first frame -> LTX i2v -> preview / info. To re-encode the IMAGE batch into MP4, wire `image` and `frame_rate` into stock CreateVideo, then SaveVideo."
+      "description": "Image-to-video: LoadImage (still) -> LTX i2v -> SaveVideo direct."
     }
   },
   "version": 0.4

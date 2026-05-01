@@ -5,13 +5,18 @@ replaces a section of a source video with newly-synthesised content. Setting
 ``start_time=0`` and ``duration=<full clip length>`` coerces it into a
 full-clip video-to-video regen.
 
-Inputs are flexible -- wire any one of:
+Inputs:
 
-* ``image`` (IMAGE batch) -- multi-frame batch encoded to MP4 internally.
-  To consume an upstream ``VIDEO`` socket (Load Video, partner API node),
-  chain ComfyUI's stock ``GetVideoComponents`` first to extract its IMAGE.
-* ``video_url`` (STRING) -- a public HTTPS URL. Recommended for very large
-  inputs that would push the base64 payload past request-size limits.
+* ``video`` (VIDEO socket) -- preferred when chained from another VIDEO-emitting
+  node (Load Video, another LTXV node). When the VIDEO is backed by an
+  on-disk MP4 (``VideoFromFile``), the original container bytes ride
+  straight to the API -- audio preserved, no re-encode.
+* ``video_url`` (STRING) -- a public HTTPS URL. Used verbatim by the API.
+  Recommended for very large inputs that would push base64 past request
+  size limits, or when input audio fidelity matters and the source isn't
+  file-backed.
+
+Output is the regenerated MP4 wrapped as a native ComfyUI VIDEO socket.
 
 Auth: ``LTXV_API_KEY`` env var (preferred), or the studio config / user
 TOML fallback chain in :mod:`ltxv_api.config`.
@@ -27,10 +32,9 @@ on the canvas):
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
-from .. import tensors
+from .. import tensors, video_type
 from ..client import LTXVClient
 from ..config import resolve_api_key
 
@@ -97,19 +101,20 @@ class LTXVAPIVideoToVideo:
                 "fps_for_encoding": ("FLOAT", {
                     "default": 24.0, "min": 1.0, "max": 60.0, "step": 0.001,
                     "tooltip": (
-                        "FPS to use when encoding an IMAGE batch to MP4 (for the "
-                        "request body). Ignored when video_url is used or when a "
-                        "VIDEO socket is wired (the VIDEO's own fps wins)."
+                        "FPS used when re-encoding a component-derived VIDEO "
+                        "(VideoFromComponents) to MP4 for the request body. "
+                        "Ignored when video_url is used or when the VIDEO is "
+                        "file-backed (the original bytes ride through unchanged)."
                     ),
                 }),
             },
             "optional": {
-                "image": ("IMAGE", {
+                "video": ("VIDEO", {
                     "tooltip": (
-                        "Source as IMAGE batch. Encoded to MP4 at fps_for_encoding "
-                        "before sending. To bring in a VIDEO from upstream, "
-                        "use ComfyUI's stock GetVideoComponents node and wire its "
-                        "IMAGE output here."
+                        "Source video. The native input type for retake. When the "
+                        "VIDEO is backed by an on-disk MP4 (Load Video, another "
+                        "LTXV node) the original bytes are uploaded directly -- "
+                        "audio preserved, no re-encode."
                     ),
                 }),
                 "video_url": ("STRING", {
@@ -117,7 +122,7 @@ class LTXVAPIVideoToVideo:
                     "placeholder": "(optional) HTTPS URL — used verbatim instead of base64",
                     "tooltip": (
                         "Public HTTPS URL of the input video. When non-empty, this "
-                        "wins over the `image` socket and the request uses the URL "
+                        "wins over the `video` socket and the request uses the URL "
                         "verbatim. Recommended for inputs too large for base64 "
                         "(10s of MB+)."
                     ),
@@ -126,19 +131,22 @@ class LTXVAPIVideoToVideo:
         }
 
     RETURN_TYPES = (
-        "IMAGE", "STRING", "INT", "INT", "FLOAT", "INT",
+        "VIDEO", "STRING", "INT", "INT", "FLOAT", "INT",
     )
     RETURN_NAMES = (
-        "image", "info",
+        "video", "info",
         "width", "height", "frame_rate", "frame_count",
     )
     OUTPUT_TOOLTIPS = (
-        "Decoded frames as IMAGE batch (N×H×W×C float32 in [0,1]).",
+        "Native ComfyUI VIDEO wrapping the downloaded MP4 (lazy decode). "
+        "Wire to SaveVideo / GetVideoComponents / partner API nodes. Audio "
+        "track depends on `mode`: replace_audio_and_video / replace_audio "
+        "ship API-generated audio; replace_video keeps the source's audio.",
         "Human-readable summary.",
         "Frame width in pixels.",
         "Frame height in pixels.",
-        "MP4 frame rate as decoded from the container.",
-        "Number of frames decoded into the IMAGE batch.",
+        "MP4 frame rate as probed from the container.",
+        "Number of frames in the MP4 container.",
     )
     FUNCTION = "execute"
     CATEGORY = "LTXV API"
@@ -152,7 +160,7 @@ class LTXVAPIVideoToVideo:
         mode: str,
         resolution: str,
         fps_for_encoding: float,
-        image: Optional[Any] = None,
+        video: Optional[Any] = None,
         video_url: str = "",
     ):
         if duration < 2.0:
@@ -160,8 +168,8 @@ class LTXVAPIVideoToVideo:
                 f"duration={duration:.2f}s is below the LTX retake minimum (2.0s)."
             )
 
-        video_uri, temp_mp4 = tensors.resolve_video_uri(
-            image=image,
+        video_uri, temp_input_mp4 = tensors.resolve_video_uri(
+            video=video,
             video_url=video_url,
             fps_override=float(fps_for_encoding),
         )
@@ -186,27 +194,27 @@ class LTXVAPIVideoToVideo:
                 model=model,
             )
         finally:
-            # Clean up the encoded-input MP4 if we created one (data URI path).
-            if temp_mp4 is not None:
+            # Clean up the encoded-input MP4 if we created one (component-
+            # derived VIDEO branch). File-backed inputs (None) and URLs need
+            # no cleanup.
+            if temp_input_mp4 is not None:
                 try:
-                    temp_mp4.unlink()
+                    temp_input_mp4.unlink()
                 except OSError:
                     pass
 
-        try:
-            out_image, decoded_fps = tensors.mp4_to_image_batch(out_path)
-        finally:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
+        width, height, n_frames, decoded_fps = tensors.mp4_probe(out_path)
 
-        n_frames = int(out_image.shape[0])
-        height = int(out_image.shape[1])
-        width = int(out_image.shape[2])
+        video_obj = video_type.make_video_from_file(str(out_path))
+        if video_obj is None:
+            raise RuntimeError(
+                "Native ComfyUI VIDEO type isn't reachable (comfy_api.latest "
+                "import failed). Update ComfyUI to a recent build that ships "
+                "the VIDEO type."
+            )
 
         info_str = (
             f"{width}x{height} @ {decoded_fps:.3f}fps, {n_frames} frames "
             f"(model={model}, mode={mode}, start={start_time:.2f}s, dur={duration:.2f}s)"
         )
-        return (out_image, info_str, width, height, float(decoded_fps), n_frames)
+        return (video_obj, info_str, width, height, float(decoded_fps), n_frames)

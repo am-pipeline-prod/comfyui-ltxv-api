@@ -14,23 +14,34 @@ weights), use the official local-inference repo instead:
 
 ## Nodes
 
-| Node | Endpoint | Output |
-|---|---|---|
-| **LTXV API Text to Video** | `POST /v1/text-to-video` | MP4 → IMAGE batch |
-| **LTXV API Image to Video** | `POST /v1/image-to-video` | MP4 → IMAGE batch |
-| **LTXV API Video to Video (Retake)** | `POST /v1/retake` | MP4 → IMAGE batch |
-| **LTXV API Video to Video HDR** | `POST /v2/video-to-video-hdr` (async) | EXR ZIP → float32 IMAGE batch (HDR-safe) |
+| Node | Endpoint | Input | Output |
+|---|---|---|---|
+| **LTXV API Text to Video** | `POST /v1/text-to-video` | (widgets only) | **VIDEO** (MP4, audio inline) |
+| **LTXV API Image to Video** | `POST /v1/image-to-video` | **IMAGE** (still) | **VIDEO** (MP4, audio inline) |
+| **LTXV API Video to Video (Retake)** | `POST /v1/retake` | **VIDEO** | **VIDEO** (MP4, audio per `mode`) |
+| **LTXV API Video to Video HDR** | `POST /v2/video-to-video-hdr` (async) | **VIDEO** (SDR) | **IMAGE** batch (HDR EXR, float32) |
 
 All nodes appear under the **LTXV API** category in the ComfyUI node menu.
 
-**Image-only by design.** Every node emits a single `IMAGE` socket plus
-metadata (width, height, frame_rate, frame_count, info string). To bring
-the result back together as a ComfyUI ``VIDEO`` (e.g. for `SaveVideo`,
-partner API nodes) chain ComfyUI's stock `CreateVideo` downstream; to
-consume an upstream `VIDEO` as input to V2V / HDR, chain stock
-`GetVideoComponents` first to extract its `IMAGE`. This keeps our nodes'
-surface tight and lets the conversion happen exactly once, in the place
-the workflow author chooses.
+**Single native socket per direction, matching the API.** The three sync
+endpoints are video-native (the API returns an MP4 with optional audio in
+one container), so we emit `VIDEO`. The HDR endpoint is image-native (it
+returns a ZIP of per-frame EXR with no audio and no native time base),
+so we emit `IMAGE` batch.
+
+**Conversion happens at the IMAGE↔VIDEO boundary, in stock ComfyUI nodes:**
+
+* IMAGE batch → VIDEO downstream: `CreateVideo` (then `SaveVideo`).
+* VIDEO → IMAGE batch / AUDIO upstream of consumers that need the parts:
+  `GetVideoComponents`.
+
+So a "T2V + see frames" workflow is `T2V → GetVideoComponents → PreviewImage`;
+a "T2V + save MP4" workflow is `T2V → SaveVideo` (direct, no helper). The
+choice of where to convert lives in the workflow author's hands.
+
+**Audio is preserved** through the VIDEO socket on the three sync nodes
+(when `generate_audio=True` for T2V/I2V, or per `mode` for V2V). HDR has
+no audio by definition.
 
 ## Installation
 
@@ -138,7 +149,7 @@ The four endpoints in their simplest forms:
 
 1. Drop **LTXV API Text to Video**.
 2. Set `prompt`, `model = ltx-2-3-fast`, `duration = 4`, `resolution = 1920x1080`.
-3. Wire `image` → **PreviewImage** (or → **CreateVideo** → **SaveVideo** to encode an MP4 downstream).
+3. Wire `video` → **SaveVideo** (direct — audio rides through automatically).
 4. Queue Prompt.
 
 > **Resolution / fps note.** LTX maintains a per-`(model, resolution, fps)`
@@ -155,26 +166,35 @@ The four endpoints in their simplest forms:
 2. Set `prompt`, `model`, `duration`, `resolution = 1920x1080`.
 3. (Optional, ltx-2-3 models only) wire a second **Load Image** to `last_frame`
    for end-frame interpolation.
-4. Queue Prompt.
+4. Wire `video` → **SaveVideo**.
+5. Queue Prompt.
 
 ### Video to Video (Retake)
 
-1. **Load Video** → **GetVideoComponents** (stock) → wire its `image` to
-   **LTXV API Video to Video (Retake)** `image`. Or paste a public URL
-   into `video_url` and skip the Load chain.
+1. **Load Video** → wire its `VIDEO` directly into **LTXV API Video to
+   Video (Retake)** `video`. Or paste a public URL into `video_url`.
 2. Set `prompt`, `model = ltx-2-3-pro`, `start_time = 0`,
    `duration = <full clip length>` for a full-clip regen. The endpoint
    minimum is 2.0s and the input must be at least 73 frames.
 3. `mode` controls which streams to regenerate (`replace_audio_and_video`,
    `replace_video`, `replace_audio`).
-4. Queue Prompt.
+4. Wire `video` → **SaveVideo**.
+5. Queue Prompt.
+
+> **Pristine input audio.** When the `video` socket is backed by an on-disk
+> MP4 (Load Video, another LTXV node) the original container bytes are
+> uploaded directly — audio preserved, no libx264 re-encode. If the source
+> is component-derived (e.g. a workflow that built a VIDEO from frames),
+> the request body is re-encoded as video-only MP4 and the input audio is
+> dropped on upload. Use `video_url` if pristine audio matters and the
+> source isn't file-backed.
 
 ### Video to Video HDR
 
-1. **Load Video** → **GetVideoComponents** → wire `image` into the HDR
-   node, the same way as Retake. Or use `video_url`.
+1. **Load Video** → wire its `VIDEO` into the HDR node `video`. Or use
+   `video_url`.
 2. Set `output_fps` to the rate you want reported on the `frame_rate`
-   output — the EXR ZIP itself doesn't have a time base.
+   output — the EXR ZIP itself doesn't have a native time base.
 3. Queue Prompt. The node submits the async job, polls until terminal,
    downloads the EXR ZIP, and emits a float32 IMAGE batch.
 4. Wire `image` → an EXR-aware writer (e.g. **AM Write Image** with
@@ -226,23 +246,25 @@ commonly tweaked fields:
 
 ## Outputs
 
-All four nodes emit the same socket shape (so workflows can swap one node
-for another without rewiring):
+The three sync nodes (T2V / I2V / V2V) emit the same shape:
 
 | Socket | Type | Notes |
 |---|---|---|
-| `image` | IMAGE | `[N, H, W, 3]` float32. SDR endpoints clamp to `[0, 1]`; the HDR node returns scene-linear values that may exceed 1.0. |
-| `info` | STRING | Human-readable summary of dimensions / fps / frame count / model / job id. |
+| `video` | VIDEO | Native ComfyUI VIDEO wrapping the response MP4 (lazy-decoded via `VideoFromFile`). Audio rides through inline when generated. |
+| `info` | STRING | Human-readable summary of dimensions / fps / frame count / model. |
 | `width`, `height` | INT | Frame dimensions. |
-| `frame_rate` | FLOAT | MP4 frame rate (SDR nodes) / `output_fps` widget value (HDR node). |
-| `frame_count` | INT | Number of frames in the IMAGE batch. |
+| `frame_rate` | FLOAT | MP4 frame rate as probed from the container header. |
+| `frame_count` | INT | Number of frames in the MP4 container. |
 
-**No `VIDEO` or `AUDIO` socket.** SDR endpoints' generated audio is not
-exposed downstream — set `generate_audio = False` to skip server-side
-audio generation entirely (cheaper, faster), or save the IMAGE batch with
-ComfyUI's stock `CreateVideo` + `SaveVideo` chain if you need an MP4. The
-audio track from `Load Video → GetVideoComponents` upstream of V2V can be
-re-attached to the V2V output the same way.
+The HDR node has the same metadata sockets but **outputs `IMAGE` instead
+of `VIDEO`**, because the HDR endpoint really does return a ZIP of per-frame
+EXRs (no audio, no native time base). To bring HDR back into a VIDEO,
+chain `image` + `frame_rate` into stock `CreateVideo` downstream.
+
+| Socket | Type | Notes (HDR only) |
+|---|---|---|
+| `image` | IMAGE | `[N, H, W, 3]` float32, **scene-linear, NOT clipped to [0, 1]**. |
+| `frame_rate` | FLOAT | The `output_fps` widget value (the EXR ZIP has no native fps to probe). |
 
 ## Troubleshooting
 
@@ -269,8 +291,8 @@ a system package or a stripped wheel, reinstall with `pip install --upgrade
 opencv-python`.
 
 **Base64 request body rejected** — for very large inputs, use the
-`video_url` STRING widget instead of the `image` socket and
-pass a public HTTPS URL.
+`video_url` STRING widget instead of the `video` socket and pass a
+public HTTPS URL.
 
 ## Development
 

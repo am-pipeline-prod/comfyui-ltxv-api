@@ -79,41 +79,94 @@ a presigned URL to a ZIP of EXRs (24h availability).
 Polling cadence: LTX docs recommend "every 5s". The client starts there
 and backs off exponentially up to 30s on 429s; 10 min default ceiling.
 
-## Image-only socket surface (no VIDEO / AUDIO)
+## Socket surface — single native type per direction, matching the API
 
-Every node emits a single `IMAGE` batch + metadata (info, width, height,
-frame_rate, frame_count) and nothing else. Workflows that need a `VIDEO`
-chain ComfyUI's stock `CreateVideo` (and optionally `SaveVideo`) downstream;
-workflows that take a `VIDEO` upstream chain stock `GetVideoComponents`
-to extract the IMAGE before feeding it into V2V or HDR.
+Each endpoint has exactly one native data type at the wire level, and our
+node sockets mirror that:
 
-The trade-off: generated audio from sync endpoints' `generate_audio=True`
-is not exposed downstream — to suppress that wasted server work, set
-`generate_audio=False` on the relevant nodes. To preserve audio across a
-V2V pass, pull it from `GetVideoComponents` upstream and re-mux into the
-final `CreateVideo` node yourself.
+| Endpoint | Wire type | Input socket | Output socket |
+|---|---|---|---|
+| `/v1/text-to-video` | MP4 (frames + audio) | (none) | `VIDEO` |
+| `/v1/image-to-video` | MP4 in MP4 out | `IMAGE` (still) | `VIDEO` |
+| `/v1/retake` | MP4 in MP4 out | `VIDEO` | `VIDEO` |
+| `/v2/video-to-video-hdr` | MP4 in / EXR ZIP out | `VIDEO` | `IMAGE` batch |
 
-This split (image-only on our side, conversion via stock nodes on the
-caller's side) keeps the surface tight and pushes the format decision to
-exactly one place in the workflow. Earlier prototypes emitted parallel
-`IMAGE` + `VIDEO` + `AUDIO` sockets to mimic
-[am-pipe-media-io's pattern](https://github.com/am-pipeline-prod/am-pipe-media-io)
-but the parallel sockets duplicated state and confused the "convert
-exactly once" intuition; v0.2 pulled them out.
+The three sync endpoints are video-native (audio inline in the MP4 container);
+HDR is image-native (per-frame EXR sequence, silent, no time base).
+Conversion between IMAGE and VIDEO domains happens **exactly at the
+IMAGE↔VIDEO boundary**, in ComfyUI's stock `CreateVideo` /
+`GetVideoComponents` nodes. The workflow author chooses where to convert.
+
+**This shape went through two false starts** before settling here. v0.1
+emitted parallel `IMAGE + VIDEO + AUDIO` sockets on every node (mimicking
+[am-pipe-media-io](https://github.com/am-pipeline-prod/am-pipe-media-io)'s
+older convention) but the parallel sockets were two views of the same MP4
+and pushed redundant state through the graph. v0.2 collapsed everything to
+`IMAGE`-only — which silently dropped the API's generated audio, leaking a
+real capability of the endpoints. v0.3 (current) is the API-faithful shape:
+single native socket per direction, audio rides inline through `VIDEO`,
+and the HDR node honestly admits it returns image data.
+
+## VIDEO type bridge
+
+ComfyUI's native `VIDEO` type lives under `comfy_api.latest`
+(`InputImpl.VideoFromFile`, `InputImpl.VideoFromComponents`,
+`Types.VideoComponents`). The bridge in `video_type.py` is a thin
+defensive wrapper modelled on
+[am-pipe-media-io's `_core.video_type`](https://github.com/am-pipeline-prod/am-pipe-media-io)
+— it tries to import `comfy_api.latest`, and degrades gracefully (`is_available()`
+returns False, the wrappers return `None`) when the import fails. So the
+package loads on older ComfyUI without raising; it just can't actually emit
+a VIDEO socket until ComfyUI is updated.
+
+Three helpers are exposed:
+
+* **`make_video_from_file(path)`** — wraps the downloaded response MP4 in
+  `VideoFromFile`. Lazy: downstream consumers (`SaveVideo`,
+  `GetVideoComponents`, partner API nodes) re-decode on demand. The MP4
+  file lives in ComfyUI's temp dir for the lifetime of the workflow run.
+* **`get_components(video)`** — extracts `(images, audio, frame_rate)` from
+  an upstream VIDEO. Used by V2V / HDR when the input VIDEO is component-derived
+  and we have to re-encode for the request body.
+* **`get_source_path(video)`** — best-effort access to the on-disk file
+  behind a `VideoFromFile`. When non-None, the request body reads those
+  original container bytes directly (preserving audio + skipping a libx264
+  round-trip); when None, we fall through to `get_components` + re-encode.
 
 ## Tensor I/O
 
 * IMAGE → PNG bytes / data URI: PIL, lossless PNG (`compress_level=3`).
+  Used by I2V's `image_uri` (and `last_frame_uri`).
 * IMAGE batch → MP4: imageio + libx264 + yuv420p, even/even dimensions
-  enforced (libx264 rejects odd-sized frames at yuv420p). Used to
-  build the `video_uri` request body when a node accepts an IMAGE input.
-* MP4 → IMAGE batch: imageio + ffmpeg. Drops alpha if present. Used to
-  decode the sync endpoints' MP4 response into the output IMAGE batch;
-  the temp MP4 file is deleted after decode (no `VIDEO` socket holds
-  a reference).
-* MP4 file → base64 data URI: read whole file, base64.b64encode.
+  enforced (libx264 rejects odd-sized frames at yuv420p). Used as the
+  fallback when a `VIDEO` input is component-derived (no backing file).
+  **Audio is dropped** in this branch — documented on the relevant
+  tooltips and in the README.
+* MP4 file → base64 data URI: read whole file, base64.b64encode. Used for
+  the fast path on file-backed `VIDEO` inputs (preserves audio +
+  skips re-encode).
+* MP4 → IMAGE batch: imageio + ffmpeg. Drops alpha if present. Only used
+  in the response path on the rare branch where `mp4_probe` falls through.
+* MP4 metadata-only probe (`mp4_probe`): `iio.immeta(...)` reads the
+  container header for `(width, height, frame_count, fps)` without
+  decoding the pixel stream. Used by all VIDEO-emitting nodes to populate
+  their metadata sockets without a wasted decode.
 * EXR → IMAGE: OpenCV `IMREAD_UNCHANGED | IMREAD_ANYDEPTH`, BGR→RGB,
-  float32, **no clamp** (HDR pixels can exceed 1.0).
+  float32, **no clamp** (HDR pixels can exceed 1.0). Only used by the
+  HDR node.
+
+## MP4 file lifecycle
+
+Sync endpoints (T2V / I2V / V2V) stream their MP4 response body into a
+temp file in ComfyUI's temp directory (`folder_paths.get_temp_directory()`),
+then wrap that path in `VideoFromFile` for the VIDEO socket. **The file
+must persist for the lifetime of the workflow run** — `VideoFromFile` is
+lazy and reads from disk on demand. ComfyUI manages temp-dir cleanup
+across sessions; we don't unlink in the node ourselves.
+
+Input MP4s built from component-derived VIDEO inputs (the re-encode
+fallback path) are deleted in `finally:` once the API call returns,
+since they were created solely to build the request body.
 
 ## Error handling
 

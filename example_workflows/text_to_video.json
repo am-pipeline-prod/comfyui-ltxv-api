@@ -12,7 +12,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "image", "type": "IMAGE", "links": [1], "slot_index": 0},
+        {"name": "video", "type": "VIDEO", "links": [1], "slot_index": 0},
         {"name": "info", "type": "STRING", "links": [2], "slot_index": 1},
         {"name": "width", "type": "INT", "links": null},
         {"name": "height", "type": "INT", "links": null},
@@ -33,19 +33,20 @@
     },
     {
       "id": 2,
-      "type": "PreviewImage",
+      "type": "SaveVideo",
       "pos": [640, 200],
-      "size": [320, 320],
+      "size": [320, 200],
       "flags": {},
       "order": 1,
       "mode": 0,
-      "inputs": [{"name": "images", "type": "IMAGE", "link": 1}],
-      "properties": {"Node name for S&R": "PreviewImage"}
+      "inputs": [{"name": "video", "type": "VIDEO", "link": 1}],
+      "properties": {"Node name for S&R": "SaveVideo"},
+      "widgets_values": ["ltxv_t2v"]
     },
     {
       "id": 3,
       "type": "ShowText|pysssss",
-      "pos": [640, 560],
+      "pos": [640, 440],
       "size": [320, 80],
       "flags": {},
       "order": 2,
@@ -56,14 +57,14 @@
     }
   ],
   "links": [
-    [1, 1, 0, 2, 0, "IMAGE"],
+    [1, 1, 0, 2, 0, "VIDEO"],
     [2, 1, 1, 3, 0, "STRING"]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "comfyui-ltxv-api": {
-      "description": "Minimal text-to-video example: prompt -> LTX -> preview frames + show info string. To re-encode the IMAGE batch into an MP4, wire `image` and `frame_rate` into ComfyUI's stock CreateVideo node, then SaveVideo."
+      "description": "Minimal text-to-video example: LTX -> SaveVideo direct (audio rides through the VIDEO socket when generate_audio=True). For frame-level work chain GetVideoComponents off the VIDEO socket."
     }
   },
   "version": 0.4

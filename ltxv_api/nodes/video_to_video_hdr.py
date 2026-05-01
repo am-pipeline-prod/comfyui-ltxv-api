@@ -6,11 +6,12 @@ polling loop. The endpoint regenerates an SDR input as a sequence of
 those frames.
 
 Output is an IMAGE batch of float32 frames -- HDR-safe (values may exceed
-1.0, which is the whole point). To bring the frames back together as a
-ComfyUI ``VIDEO`` (e.g. for an SDR preview encode), wire ``image`` into
-ComfyUI's stock ``CreateVideo`` node downstream; for HDR-safe export,
-wire ``image`` into an EXR-aware writer (e.g. ``AM Write Image`` with
-``ext=exr``) instead.
+1.0, which is the whole point). The endpoint is image-native: there's no
+audio track and no native time base on the EXR ZIP. To re-encode the IMAGE
+batch back into a VIDEO (e.g. for SaveVideo), wire ``image`` plus the
+``frame_rate`` metadata socket into stock ``CreateVideo``. For HDR-safe
+export wire ``image`` into an EXR-aware writer (e.g. ``AM Write Image``
+with ``ext=exr``) instead.
 
 Pricing (per :doc:`api-reference-snapshot.md` and the LTX docs):
 
@@ -66,17 +67,19 @@ class LTXVAPIVideoToVideoHDR:
                 "fps_for_encoding": ("FLOAT", {
                     "default": 24.0, "min": 1.0, "max": 60.0, "step": 0.001,
                     "tooltip": (
-                        "FPS to use when encoding an IMAGE batch to MP4 for the "
-                        "request body. Ignored when video_url is used."
+                        "FPS used when re-encoding a component-derived VIDEO "
+                        "(VideoFromComponents) to MP4 for the request body. "
+                        "Ignored when video_url is used or when the VIDEO is "
+                        "file-backed."
                     ),
                 }),
                 "output_fps": ("FLOAT", {
                     "default": 24.0, "min": 1.0, "max": 60.0, "step": 0.001,
                     "tooltip": (
                         "FPS reported on the `frame_rate` output socket. The EXR "
-                        "ZIP from the API doesn't carry a time base, so this is "
-                        "what downstream consumers (CreateVideo, AM Write Image) "
-                        "will see for cadence."
+                        "ZIP from the API doesn't carry a native time base, so "
+                        "this is what downstream consumers (CreateVideo, AM Write "
+                        "Image) will see for cadence."
                     ),
                 }),
                 "poll_timeout_seconds": ("INT", {
@@ -97,12 +100,12 @@ class LTXVAPIVideoToVideoHDR:
                 }),
             },
             "optional": {
-                "image": ("IMAGE", {
+                "video": ("VIDEO", {
                     "tooltip": (
-                        "Source as IMAGE batch. Encoded to MP4 at fps_for_encoding "
-                        "before sending. Tier limits apply: ≤1080p max 181 frames, "
-                        "≤1440p max 101, ≤4K max 41. To bring in a VIDEO from "
-                        "upstream, chain a stock GetVideoComponents node first."
+                        "Source SDR video. Native input type. When the VIDEO is "
+                        "backed by an on-disk MP4 (Load Video, another LTXV node) "
+                        "the original bytes are uploaded directly. Tier limits "
+                        "apply: ≤1080p max 181 frames, ≤1440p max 101, ≤4K max 41."
                     ),
                 }),
                 "video_url": ("STRING", {
@@ -110,7 +113,7 @@ class LTXVAPIVideoToVideoHDR:
                     "placeholder": "(optional) HTTPS URL — used verbatim instead of base64",
                     "tooltip": (
                         "Public HTTPS URL of the SDR input. When non-empty, wins "
-                        "over the `image` socket. Recommended for inputs that "
+                        "over the `video` socket. Recommended for inputs that "
                         "would balloon the base64 request body."
                     ),
                 }),
@@ -126,7 +129,9 @@ class LTXVAPIVideoToVideoHDR:
     )
     OUTPUT_TOOLTIPS = (
         "HDR EXR frames as IMAGE batch (N×H×W×3 float32, *not clipped to [0,1]* — "
-        "scene-linear values can and do exceed 1.0).",
+        "scene-linear values can and do exceed 1.0). The HDR endpoint is "
+        "image-native; there is no VIDEO output socket. To re-encode for "
+        "SDR delivery, wire `image` + `frame_rate` into stock CreateVideo.",
         "Human-readable summary including the LTX job id.",
         "Frame width in pixels.",
         "Frame height in pixels.",
@@ -147,12 +152,12 @@ class LTXVAPIVideoToVideoHDR:
         output_fps: float,
         poll_timeout_seconds: int,
         keep_temp_exrs: bool,
-        image: Optional[Any] = None,
+        video: Optional[Any] = None,
         video_url: str = "",
     ):
         # Resolve input -> video_uri (URL or base64 data URI).
-        video_uri, temp_mp4 = tensors.resolve_video_uri(
-            image=image,
+        video_uri, temp_input_mp4 = tensors.resolve_video_uri(
+            video=video,
             video_url=video_url,
             fps_override=float(fps_for_encoding),
         )
@@ -171,9 +176,9 @@ class LTXVAPIVideoToVideoHDR:
         try:
             submitted = client.submit_video_to_video_hdr(video_uri=video_uri)
         finally:
-            if temp_mp4 is not None:
+            if temp_input_mp4 is not None:
                 try:
-                    temp_mp4.unlink()
+                    temp_input_mp4.unlink()
                 except OSError:
                     pass
 

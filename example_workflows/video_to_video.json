@@ -1,11 +1,11 @@
 {
-  "last_node_id": 5,
-  "last_link_id": 4,
+  "last_node_id": 4,
+  "last_link_id": 3,
   "nodes": [
     {
       "id": 1,
       "type": "LoadVideo",
-      "pos": [60, 200],
+      "pos": [80, 200],
       "size": [300, 200],
       "flags": {},
       "order": 0,
@@ -19,35 +19,19 @@
     },
     {
       "id": 2,
-      "type": "GetVideoComponents",
-      "pos": [400, 200],
-      "size": [220, 100],
+      "type": "LTXVAPIVideoToVideo",
+      "pos": [420, 200],
+      "size": [400, 380],
       "flags": {},
       "order": 1,
       "mode": 0,
-      "inputs": [{"name": "video", "type": "VIDEO", "link": 1}],
-      "outputs": [
-        {"name": "image", "type": "IMAGE", "links": [2], "slot_index": 0},
-        {"name": "audio", "type": "AUDIO", "links": null},
-        {"name": "frame_rate", "type": "FLOAT", "links": null}
-      ],
-      "properties": {"Node name for S&R": "GetVideoComponents"}
-    },
-    {
-      "id": 3,
-      "type": "LTXVAPIVideoToVideo",
-      "pos": [660, 200],
-      "size": [400, 380],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
       "inputs": [
-        {"name": "image", "type": "IMAGE", "link": 2},
+        {"name": "video", "type": "VIDEO", "link": 1},
         {"name": "video_url", "type": "STRING", "link": null, "widget": {"name": "video_url"}}
       ],
       "outputs": [
-        {"name": "image", "type": "IMAGE", "links": [3], "slot_index": 0},
-        {"name": "info", "type": "STRING", "links": [4], "slot_index": 1},
+        {"name": "video", "type": "VIDEO", "links": [2], "slot_index": 0},
+        {"name": "info", "type": "STRING", "links": [3], "slot_index": 1},
         {"name": "width", "type": "INT", "links": null},
         {"name": "height", "type": "INT", "links": null},
         {"name": "frame_rate", "type": "FLOAT", "links": null},
@@ -66,40 +50,40 @@
       ]
     },
     {
+      "id": 3,
+      "type": "SaveVideo",
+      "pos": [880, 200],
+      "size": [320, 200],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"name": "video", "type": "VIDEO", "link": 2}],
+      "properties": {"Node name for S&R": "SaveVideo"},
+      "widgets_values": ["ltxv_v2v"]
+    },
+    {
       "id": 4,
-      "type": "PreviewImage",
-      "pos": [1100, 200],
-      "size": [320, 320],
+      "type": "ShowText|pysssss",
+      "pos": [880, 440],
+      "size": [320, 80],
       "flags": {},
       "order": 3,
       "mode": 0,
-      "inputs": [{"name": "images", "type": "IMAGE", "link": 3}],
-      "properties": {"Node name for S&R": "PreviewImage"}
-    },
-    {
-      "id": 5,
-      "type": "ShowText|pysssss",
-      "pos": [1100, 560],
-      "size": [320, 80],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [{"name": "text", "type": "STRING", "link": 4, "widget": {"name": "text"}}],
+      "inputs": [{"name": "text", "type": "STRING", "link": 3, "widget": {"name": "text"}}],
       "properties": {"Node name for S&R": "ShowText|pysssss"},
       "widgets_values": [""]
     }
   ],
   "links": [
     [1, 1, 0, 2, 0, "VIDEO"],
-    [2, 2, 0, 3, 0, "IMAGE"],
-    [3, 3, 0, 4, 0, "IMAGE"],
-    [4, 3, 1, 5, 0, "STRING"]
+    [2, 2, 0, 3, 0, "VIDEO"],
+    [3, 2, 1, 4, 0, "STRING"]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "comfyui-ltxv-api": {
-      "description": "Retake (V2V) full-clip regen: LoadVideo -> GetVideoComponents -> image -> LTX V2V. start_time=0 + duration=4.0s + mode=replace_video coerces it into a full-clip regen. To re-encode the result back into MP4 (with audio), wire image + audio (passed through from GetVideoComponents) + frame_rate into stock CreateVideo, then SaveVideo."
+      "description": "Retake (V2V) full-clip regen: LoadVideo -> LTX V2V -> SaveVideo direct. start_time=0 + duration=full + mode=replace_video keeps the source's audio, replaces the pixels."
     }
   },
   "version": 0.4

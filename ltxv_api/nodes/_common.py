@@ -1,8 +1,6 @@
 """Shared helpers for the LTXV API ComfyUI nodes."""
 from __future__ import annotations
 
-import torch
-
 # Resolution dropdown values shared across the sync endpoints. The LTX API
 # rejects sizes that aren't on a per-model accepted list, with errors like
 # "Resolution 1280x720 is not supported by model ltx-2-fast". Only the two
@@ -35,11 +33,6 @@ CAMERA_MOTION_CHOICES = (
     "jib_down",
     "focus_shift",
 )
-
-
-def empty_image_tensor() -> "torch.Tensor":
-    """1×64×64×3 black frame -- the conventional empty IMAGE placeholder."""
-    return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
 
 
 def resolve_resolution(choice: str, custom: str) -> str:
