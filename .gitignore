@@ -34,3 +34,8 @@ scratch/
 *.tmp.png
 *.tmp.exr
 *.tmp.zip
+
+# Syncthing transient working copies (the QNAP -> TrueNAS-BM sync target
+# leaves these alongside files mid-transfer; they should never be checked in).
+.syncthing.*
+*.syncthing.tmp
