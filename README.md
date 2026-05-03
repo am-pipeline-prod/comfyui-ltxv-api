@@ -115,13 +115,6 @@ with this single line:
 api_key = "ltxv_..."
 ```
 
-### 3. Studio config (am-pipeline-prod only)
-
-Internal users on the am-pipeline-prod NAS don't need to do anything: the
-key already lives at `Z:\admin\config\ltx-video.env` (Windows) /
-`/_pipeline/admin/config/ltx-video.env` (Linux / OVH). The node picks it
-up automatically.
-
 > **Why not a node-input widget?** Widgets get baked into saved workflow
 > JSON files and into screenshots people post on Discord. Reading from
 > env / config file keeps the key out of the workflow surface.
