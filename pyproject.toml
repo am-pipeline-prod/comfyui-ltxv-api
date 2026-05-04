@@ -50,9 +50,9 @@ Issues = "https://github.com/am-pipeline-prod/comfyui-ltxv-api/issues"
 # `name` above is immutable once published, so it is set deliberately.
 # ---------------------------------------------------------------------------
 [tool.comfy]
-PublisherId = ""  # TODO: set to your registry.comfy.org publisher id before first publish
+PublisherId = "adrianmeyerart"
 DisplayName = "ComfyUI LTXV API"
-Icon = ""  # optional: SVG/PNG/JPG/GIF, max 800x400, hosted URL
+Icon = ""  # optional: SVG/PNG/JPG/GIF, max 400x400 square, hosted URL
 
 [tool.setuptools.packages.find]
 include = ["ltxv_api*"]
