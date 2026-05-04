@@ -12,6 +12,16 @@ locally. If you want to host LTX yourself (32 GB+ VRAM, ~100 GB of model
 weights), use the official local-inference repo instead:
 [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo).
 
+> **Heads up:** LTX is a **paid API** — every generation bills your LTX
+> account. You are responsible for your own usage costs. See the
+> [Pricing reminder](#pricing-reminder) section below for current rates.
+
+> **Maintenance:** This is a **self-serve** project. It works for me and
+> I'm sharing it as a starting point — feel free to use, fork, or copy
+> the code (MIT). I'm **not actively maintaining it**: bug reports + PRs
+> may sit unanswered, and LTX API changes may take a while to land here
+> (or never). If you depend on it, plan to maintain your own fork.
+
 ## Nodes
 
 | Node | Endpoint | Input | Output |
