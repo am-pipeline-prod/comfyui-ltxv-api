@@ -29,10 +29,13 @@ ENV_VAR = "LTXV_API_KEY"
 
 # Studio-wide pipeline-readable config paths. These are intentionally hard-
 # coded to the am-pipeline-prod studio layout; they no-op for everyone else.
-_STUDIO_ENV_FILES = (
-    Path(r"Z:\admin\config\ltx-video.env"),
-    Path("/_pipeline/admin/config/ltx-video.env"),
-)
+# Selected per-platform: a Windows drive-letter path stat'd on Linux is treated
+# as a literal backslash filename, and Path.is_file() re-raises EACCES (rather
+# than swallowing it like ENOENT), which crashed node execution.
+if sys.platform == "win32":
+    _STUDIO_ENV_FILES = (Path(r"Z:\admin\config\ltx-video.env"),)
+else:
+    _STUDIO_ENV_FILES = (Path("/_pipeline/admin/config/ltx-video.env"),)
 
 
 class ApiKeyNotFoundError(RuntimeError):
@@ -97,7 +100,11 @@ def resolve_api_key() -> str:
         return env_value.strip()
 
     for studio_path in _STUDIO_ENV_FILES:
-        if studio_path.is_file():
+        try:
+            is_file = studio_path.is_file()
+        except OSError:
+            is_file = False
+        if is_file:
             value = _parse_env_file(studio_path)
             if value:
                 return value
